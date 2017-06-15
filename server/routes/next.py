@@ -1,6 +1,5 @@
 from framework.routes import get, abort
 from framework.session import get_current_user
-from database.user import get_learning_context
 
 
 @get('/s/next')
@@ -15,17 +14,4 @@ def next_route(request):
     current_user = get_current_user(request)
     if not current_user:
         return abort(401)
-    context = get_learning_context(current_user)
-    # If 'next' action, return that,
-    # else 'next' is GET Choose Subject
-    if context.get('next'):
-        return 200, {
-            'next': context['next']
-        }
-    return 200, {
-        'next': {
-            'method': 'GET',
-            'path': '/s/users/{user_id}/subjects'
-                    .format(user_id=current_user['id']),
-        }
-    }
+    return 200, ...

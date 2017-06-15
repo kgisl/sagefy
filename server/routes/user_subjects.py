@@ -1,21 +1,18 @@
 from framework.routes import get, post, put, delete, abort
 from framework.session import get_current_user
-from database.user import set_learning_context, get_user
+from database.user import get_user
 from database.user_subjects import insert_user_subjects, get_user_subjects, \
     append_user_subjects, remove_user_subjects, \
     list_user_subjects_entity
 from database.entity_base import get_latest_accepted
 from database.subject import deliver_subject
+from modules.sequencer.next import go_next
 
 
 @get('/s/users/{user_id}/subjects')
 def get_user_subjects_route(request, user_id):
     """
     Get the list of subjects the user has added.
-
-    NEXT STATE
-    GET Choose Subject
-        -> POST Choose Subject
     """
 
     db_conn = request['db_conn']
@@ -40,14 +37,7 @@ def get_user_subjects_route(request, user_id):
         ]
     }
     if current_user == user:
-        next_ = {
-            'method': 'POST',
-            'path': '/s/users/{user_id}/subjects/{subject_id}'
-                    .format(user_id=current_user['id'],
-                            subject_id='{subject_id}'),
-        }
-        set_learning_context(current_user, next=next_)
-        response['next'] = next_
+        go_next(current_user, name='choose_subject')
     return 200, response
 
 
@@ -96,10 +86,6 @@ def add_subject_route(request, user_id, subject_id):
 def select_subject_route(request, user_id, subject_id):
     """
     Select the subject to work on.
-
-    NEXT STATE
-    POST Choose Subject   (Update Learner Context)
-        -> GET View Subject Tree
     """
 
     db_conn = request['db_conn']
@@ -107,13 +93,15 @@ def select_subject_route(request, user_id, subject_id):
     if not current_user:
         return abort(401)
     subject = get_latest_accepted('subjects', db_conn, subject_id)
-    next_ = {
-        'method': 'GET',
-        'path': '/s/subjects/{subject_id}/tree'
-                .format(subject_id=subject_id),
-    }
-    set_learning_context(current_user, subject=subject, next=next_)
-    return 200, {'next': next_}
+    if go_next(
+        current_user,
+        name='engage_subject',
+        subject_id=subject['entity_id']
+    ):
+        return 200, {}
+    return 400, {'errors': [{
+        'message': 'Not a valid subject.',
+    }]}
 
 
 @delete('/s/users/{user_id}/subjects/{subject_id}')

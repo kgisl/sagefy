@@ -5,10 +5,8 @@ from passlib.hash import bcrypt
 from database.util import insert_document, update_document, \
     get_document, deliver_fields
 from framework.elasticsearch import es
-import json
 from framework.redis import redis
-from modules.util import uniqid, pick, compact_dict, json_serial, \
-    omit, json_prep
+from modules.util import uniqid, pick, omit, json_prep
 from modules.content import get as c
 from framework.mail import send_mail
 import rethinkdb as r
@@ -157,36 +155,6 @@ def get_avatar(email, size=24):
     params = urllib.parse.urlencode({'d': 'mm', 's': str(size)})
     gravatar_url = "https://www.gravatar.com/avatar/" + hash_ + "?" + params
     return gravatar_url
-
-
-def get_learning_context(user):
-    """
-    Get the learning context of the user.
-    """
-
-    key = 'learning_context_{id}'.format(id=user['id'])
-    try:
-        context = json.loads(redis.get(key).decode())
-    except:
-        context = {}
-    return context
-
-
-def set_learning_context(user, **d):
-    """
-    Update the learning context of the user.
-
-    Keys: `card`, `unit`, `subject`
-        `next`: `method` and `path`
-    """
-
-    context = get_learning_context(user)
-    d = pick(d, ('card', 'unit', 'subject', 'next'))
-    context.update(d)
-    context = compact_dict(context)
-    key = 'learning_context_{id}'.format(id=user['id'])
-    redis.setex(key, 10 * 60, json.dumps(context, default=json_serial))
-    return context
 
 
 def get_email_token(user, send_email=True):

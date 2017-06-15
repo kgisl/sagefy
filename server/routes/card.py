@@ -1,9 +1,5 @@
 from framework.session import get_current_user
 from framework.routes import get, post, abort
-from modules.sequencer.index import update as seq_update
-from modules.sequencer.traversal import traverse, judge
-from modules.sequencer.card_chooser import choose_card
-from database.user import get_learning_context, set_learning_context
 from database.response import deliver_response
 from database.card_parameters import get_card_parameters, \
     get_card_parameters_values
@@ -13,6 +9,7 @@ from database.card import deliver_card, insert_card
 from database.unit import deliver_unit
 from modules.util import extend
 from copy import deepcopy
+from modules.sequencer.next import go_next
 
 # from modules.sequencer.params import max_learned
 
@@ -66,10 +63,6 @@ def list_cards_route(request):
 def learn_card_route(request, card_id):
     """
     Render the card's data, ready for learning.
-
-    NEXT STATE
-    GET Learn Card
-        -> POST Respond Card
     """
 
     db_conn = request['db_conn']
@@ -79,21 +72,10 @@ def learn_card_route(request, card_id):
     card = get_latest_accepted('cards', db_conn, card_id)
     if not card:
         return abort(404)
-    # Make sure the current unit id matches the card
-    context = get_learning_context(current_user)
-    if context.get('unit', {}).get('entity_id') != card['unit_id']:
-        return abort(400)
-    next_ = {
-        'method': 'POST',
-        'path': '/s/cards/{card_id}/responses'
-                .format(card_id=card['entity_id'])
-    }
-    set_learning_context(current_user, card=card, next=next_)
+    if not go_next(current_user, name='learn_card', card_id=card_id):
+        return 400, {}
     return 200, {
         'card': deliver_card(card, access='learn'),
-        'subject': context.get('subject'),
-        'unit': context.get('unit'),
-        'next': next_,
     }
 
 
@@ -135,12 +117,6 @@ def get_card_version_route(request, version_id):
 def respond_to_card_route(request, card_id):
     """
     Record and process a learner's response to a card.
-
-    NEXT STATE
-    POST Respond Card
-        -> GET Learn Card      ...when not ready
-        -> GET Choose Unit     ...when ready, but still units
-        -> GET View Subject Tree   ...when ready and done
     """
 
     # TODO-3 simplify this method.
@@ -152,80 +128,10 @@ def respond_to_card_route(request, card_id):
     card = get_latest_accepted('cards', db_conn, card_id)
     if not card:
         return abort(404)
-    # Make sure the card is the current one
-    context = get_learning_context(current_user)
-    if context.get('card', {}).get('entity_id') != card['entity_id']:
-        return abort(400)
-    r = seq_update(db_conn, current_user, card,
-                   request['params'].get('response'))
-    errors, response, feedback = (r.get('errors'), r.get('response'),
-                                  r.get('feedback'))
-    if errors:
-        return 400, {
-            'errors': errors,
-            'ref': 'wtyOJPoy4bh76OIbYp8mS3LP',
-        }
-
-    subject = context.get('subject')
-    unit = context.get('unit')
-
-    status = judge(db_conn, unit, current_user)
-
-    # If we are done with this current unit...
-    if status == "done":
-        buckets = traverse(db_conn, current_user, subject)
-
-        # If there are units to be diagnosed...
-        if buckets['diagnose']:
-            unit = buckets['diagnose'][0]
-            next_card = choose_card(db_conn, current_user, unit)
-            next_ = {
-                'method': 'GET',
-                'path': '/s/cards/{card_id}/learn'
-                        .format(card_id=next_card['entity_id']),
-            }
-            set_learning_context(
-                current_user,
-                card=next_card.data, unit=unit, next=next_)
-
-        # If there are units to be learned or reviewed...
-        elif buckets['learn'] or buckets['review']:
-            next_ = {
-                'method': 'GET',
-                'path': '/s/subjects/{subject_id}/units'
-                        .format(subject_id=subject['entity_id']),
-            }
-            set_learning_context(current_user,
-                                 card=None, unit=None, next=next_)
-
-        # If we are out of units...
-        else:
-            next_ = {
-                'method': 'GET',
-                'path': '/s/subjects/{subject_id}/tree'
-                        .format(subject_id=subject['entity_id']),
-            }
-            set_learning_context(current_user,
-                                 card=None, unit=None, next=next_)
-
-    # If we are still reviewing, learning or diagnosing this unit...
-    else:
-        next_card = choose_card(db_conn, current_user, unit)
-        if next_card:
-            next_ = {
-                'method': 'GET',
-                'path': '/s/cards/{card_id}/learn'
-                        .format(card_id=next_card['entity_id']),
-            }
-            set_learning_context(current_user, card=next_card, next=next_)
-        else:
-            next_ = {}
-            set_learning_context(current_user, next=next_)
-
+    go_next(current_user, name='respond_to_card', card_id=card_id)
     return 200, {
         'response': deliver_response(response),
         'feedback': feedback,
-        'next': next_,
     }
 
 

@@ -1,8 +1,6 @@
 from database.user import insert_user, update_user, get_user, \
-    is_password_valid, get_avatar, get_learning_context, \
-    set_learning_context, get_email_token, is_valid_token, deliver_user, \
+    is_password_valid, get_avatar, get_email_token, is_valid_token, deliver_user, \
     update_user_password
-import json
 from framework.redis import redis
 
 
@@ -214,93 +212,6 @@ def test_update_password(db_conn, users_table):
     user, errors = update_user_password(user,
                                         {'password': '1234abcd'}, db_conn)
     assert pw1 != user['password']
-
-
-def test_get_learning_context(db_conn, users_table):
-    """
-    Expect to get the learning context.
-    """
-
-    users_table.insert({
-        'id': 'abcd1234',
-        'name': 'Dalton',
-        'email': 'test@example.com',
-        'password': 'abcd1234',
-    }).run(db_conn)
-
-    user = get_user({'id': 'abcd1234'}, db_conn)
-
-    redis.set('learning_context_abcd1234', json.dumps({
-        'card': {'entity_id': 'A'},
-        'unit': {'entity_id': 'B'},
-        'subject': {'entity_id': 'C'},
-    }))
-    assert get_learning_context(user) == {
-        'card': {'entity_id': 'A'},
-        'unit': {'entity_id': 'B'},
-        'subject': {'entity_id': 'C'},
-    }
-
-    redis.delete('learning_context_abcd1234')
-    assert get_learning_context(user) == {}
-
-
-def test_set_learning_context(db_conn, users_table):
-    """
-    Expect to set the learning context.
-    """
-
-    users_table.insert({
-        'id': 'abcd1234',
-        'name': 'Dalton',
-        'email': 'test@example.com',
-        'password': 'abcd1234',
-    }).run(db_conn)
-
-    user = get_user({'id': 'abcd1234'}, db_conn)
-
-    set_learning_context(user, card={'entity_id': 'A'})
-    assert get_learning_context(user) == {
-        'card': {'entity_id': 'A'}
-    }
-
-    set_learning_context(user, unit={
-        'entity_id': 'B',
-        'name': 'Banana',
-        'body': "Banana",
-    }, subject={
-        'entity_id': 'C',
-        'name': 'Coconut',
-    })
-    assert get_learning_context(user) == {
-        'card': {
-            'entity_id': 'A',
-        },
-        'unit': {
-            'entity_id': 'B',
-            'name': 'Banana',
-            'body': "Banana",
-        },
-        'subject': {
-            'entity_id': 'C',
-            'name': 'Coconut',
-        }
-    }
-
-    set_learning_context(user, subject=None)
-    assert get_learning_context(user) == {
-        'card': {
-            'entity_id': 'A',
-        },
-        'unit': {
-            'entity_id': 'B',
-            'name': 'Banana',
-            'body': "Banana",
-        },
-    }
-
-    set_learning_context(user, card=None, unit=None)
-    assert get_learning_context(user) == {}
 
 
 def test_get_avatar():
